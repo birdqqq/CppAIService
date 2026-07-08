@@ -147,6 +147,10 @@ json AIHelper::executeCurl(const json& payload) {
 
 
     curl_easy_setopt(curl, CURLOPT_URL, strategy->getApiUrl().c_str());
+    //新增：
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+    //
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payloadStr.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
