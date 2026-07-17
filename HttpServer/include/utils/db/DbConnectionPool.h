@@ -50,11 +50,11 @@ private:
     std::string                               user_;
     std::string                               password_;
     std::string                               database_;
-    std::queue<std::shared_ptr<DbConnection>> connections_;
+    std::queue<std::shared_ptr<DbConnection>> connections_;  //使用队列存放连接池的连接
     std::mutex                                mutex_;
-    std::condition_variable                   cv_;
+    std::condition_variable                   cv_; // 设置了10个连接，第11个线程来请求连接，当前没有，需要让线程等待，而不是返回空指针
     bool                                      initialized_ = false;
-    std::thread                               checkThread_; // 添加检查线程
+    std::thread                               checkThread_; // 添加检查线程  使连接池不仅管理连接而且维护连接健康
 };
 
 } // namespace db
