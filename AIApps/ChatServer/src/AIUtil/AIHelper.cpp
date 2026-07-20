@@ -43,7 +43,7 @@ std::string AIHelper::chat(int userId,std::string userName, std::string sessionI
     //设置策略
     setStrategy(StrategyFactory::instance().create(modelType)); // 根据用户传来的模型通过单例工厂动态创建对应的AI策略，绑定到当前实例上
 
-    // 路径A：不支持MCP 普通对话
+    // 路径A：不支持MCP 普通对话  MCP：为AI模型提供统一接口，便于调用工具
     if (false == strategy->isMCPModel) {// 细节： 将常量写在左边 --> 尤达条件式 防止程序员将 == 写成 =  这样写成 = 编译失败
 
         addMessage(userId, userName, true, userQuestion, sessionId); // 将用户提问写进内存 异步的写进数据库

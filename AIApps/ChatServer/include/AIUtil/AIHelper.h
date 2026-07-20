@@ -63,6 +63,7 @@ private:
     */
     // 表示当前模型
     std::shared_ptr<AIStrategy> strategy;  //  策略模式，使用AIStrategy接口来定义不同的AI模型策略，支持多模型切换
+    // 这里使用智能指针的原因： 父类指针可以指向任意子类  ------ 面向接口编程！
 
     //一个用户针对一个AIHelper，messages存放用户的历史对话
     //偶数下标代表用户的信息，奇数下标是ai返回的内容
