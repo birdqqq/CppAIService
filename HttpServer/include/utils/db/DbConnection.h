@@ -2,6 +2,7 @@
 #include <memory>
 #include <string>
 #include <mutex>
+#include <type_traits>
 #include <cppconn/connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
@@ -78,20 +79,22 @@ private:
     void bindParams(sql::PreparedStatement*, int) {}
     
     // 辅助函数：绑定参数
+    // 注意：非 const 的 std::string 左值会命中本通用模板（精确匹配优先于 const 特化），
+    // 因此必须用 if constexpr 区分算术类型(需要 to_string)与字符串(直接绑定)，
+    // 否则对字符串调用 to_string 会编译失败。
     template<typename T, typename... Args>
-    void bindParams(sql::PreparedStatement* stmt, int index, 
-                   T&& value, Args&&... args) 
+    void bindParams(sql::PreparedStatement* stmt, int index,
+                   T&& value, Args&&... args)
     {
-        stmt->setString(index, std::to_string(std::forward<T>(value)));
-        bindParams(stmt, index + 1, std::forward<Args>(args)...);
-    }
-    
-    // 特化 string 类型的参数绑定
-    template<typename... Args>
-    void bindParams(sql::PreparedStatement* stmt, int index, 
-                   const std::string& value, Args&&... args) 
-    {
-        stmt->setString(index, value);
+        using U = std::decay_t<T>;
+        if constexpr (std::is_arithmetic_v<U>)
+        {
+            stmt->setString(index, std::to_string(std::forward<T>(value)));
+        }
+        else
+        {
+            stmt->setString(index, std::forward<T>(value));
+        }
         bindParams(stmt, index + 1, std::forward<Args>(args)...);
     }
 
