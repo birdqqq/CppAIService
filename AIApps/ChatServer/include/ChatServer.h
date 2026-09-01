@@ -74,6 +74,14 @@ private:
 
 	void readDataFromMySQL();
 
+	// 获取或创建会话的 AIHelper（不存在则懒加载最近消息）
+	std::shared_ptr<AIHelper> getOrCreateAIHelper(int userId, const std::string& sessionId);
+	// 按 session 从 MySQL 懒加载最近 limit 条消息进内存
+	void loadSessionMessagesFromMysql(int userId, const std::string& sessionId,
+		std::shared_ptr<AIHelper> helper, int limit);
+	// 淘汰超过 idleSeconds 未活跃的 AIHelper（默认 1 小时，跟随登录态）
+	void cleanIdleChatSessions(long long idleSeconds);
+
 	void packageResp(const std::string& version, http::HttpResponse::HttpStatusCode statusCode,
 		const std::string& statusMsg, bool close, const std::string& contentType,
 		int contentLen, const std::string& body, http::HttpResponse* resp);

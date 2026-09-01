@@ -25,6 +25,7 @@ void AIHelper::addMessage(int userId,const std::string& userName, bool is_user,c
     auto duration = now.time_since_epoch();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     messages.push_back({ userInput,ms });
+    trimContext(); // 裁剪到滑动窗口，防止内存无限增长
     //消息队列异步入库
     pushMessageToMysql(userId, userName, is_user, userInput, ms, sessionId);
 }
@@ -33,9 +34,26 @@ void AIHelper::restoreMessage(const std::string& userInput,long long ms) {
     messages.push_back({ userInput,ms });
 }
 
+void AIHelper::trimContext() {
+    while (messages.size() > MAX_CONTEXT_MESSAGES) {
+        // 一次删掉一整轮(user+assistant)，保证窗口始终以 user 开头、保持偶数条
+        messages.erase(messages.begin(), messages.begin() + 2);
+    }
+}
+
+void AIHelper::touch() {
+    lastActiveTime_ = std::chrono::steady_clock::now();
+}
+
+bool AIHelper::idleForSeconds(long long s) const {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::steady_clock::now() - lastActiveTime_).count() >= s;
+}
+
 
 // 发送聊天消息
 std::string AIHelper::chat(int userId,std::string userName, std::string sessionId, std::string userQuestion, std::string modelType) {
+    touch();
 
     //设置策略
     setStrategy(StrategyFactory::instance().create(modelType));
@@ -123,6 +141,7 @@ json AIHelper::request(const json& payload) {
 }
 
 std::vector<std::pair<std::string, long long>> AIHelper::GetMessages() {
+    touch();
     return this->messages;
 }
 

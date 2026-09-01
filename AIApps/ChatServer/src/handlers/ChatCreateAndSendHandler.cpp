@@ -1,4 +1,5 @@
 #include "../include/handlers/ChatCreateAndSendHandler.h"
+#include <algorithm>
 
 
 void ChatCreateAndSendHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
@@ -43,22 +44,17 @@ void ChatCreateAndSendHandler::handle(const http::HttpRequest& req, http::HttpRe
         std::cout<<"ɵsessionIdΪ "<<sessionId<<std::endl;
 
 
-        std::shared_ptr<AIHelper> AIHelperPtr;
+        // 获取或创建会话上下文（不存在则懒加载最近消息，内存只保留滑动窗口）
+        std::shared_ptr<AIHelper> AIHelperPtr = server_->getOrCreateAIHelper(userId, sessionId);
+
+        // 新会话 id 记入会话列表（幂等，避免重复）
         {
-            std::lock_guard<std::mutex> lock(server_->mutexForChatInformation);
-
-            auto& userSessions = server_->chatInformation[userId];
-
-            if (userSessions.find(sessionId) == userSessions.end()) {
-
-                userSessions.emplace( 
-                    sessionId,
-                    std::make_shared<AIHelper>()
-                );
-                server_->sessionsIdsMap[userId].push_back(sessionId);
+            std::lock_guard<std::mutex> lock(server_->mutexForSessionsId);
+            auto& ids = server_->sessionsIdsMap[userId];
+            if (std::find(ids.begin(), ids.end(), sessionId) == ids.end())
+            {
+                ids.push_back(sessionId);
             }
-            AIHelperPtr= userSessions[sessionId];
-
         }
 
         std::string aiInformation=AIHelperPtr->chat(userId, username,sessionId, userQuestion, modelType);

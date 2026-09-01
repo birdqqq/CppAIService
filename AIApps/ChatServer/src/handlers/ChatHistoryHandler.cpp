@@ -23,43 +23,48 @@ void ChatHistoryHandler::handle(const http::HttpRequest& req, http::HttpResponse
 
 
         int userId = std::stoi(session->getValue("userId"));
-        std::string username = session->getValue("username");
 
         std::string sessionId;
+        int page = 1;
+        int pageSize = 20;
+
         auto body = req.getBody();
         if (!body.empty()) {
             auto j = json::parse(body);
             if (j.contains("sessionId")) sessionId = j["sessionId"];
+            if (j.contains("page")) page = j["page"].get<int>();
+            if (j.contains("pageSize")) pageSize = j["pageSize"].get<int>();
         }
 
-        std::vector<std::pair<std::string, long long>> messages;
+        if (page < 1) page = 1;
+        if (page > 100000) page = 100000;
+        if (pageSize <= 0) pageSize = 20;
+        if (pageSize > 100) pageSize = 100;
+        int offset = (page - 1) * pageSize;
 
-        {
-            std::shared_ptr<AIHelper> AIHelperPtr;
-            std::lock_guard<std::mutex> lock(server_->mutexForChatInformation);
-
-            auto& userSessions = server_->chatInformation[userId];
-
-            if (userSessions.find(sessionId) == userSessions.end()) {
-
-                userSessions.emplace( 
-                    sessionId,
-                    std::make_shared<AIHelper>()
-                );
-            }
-            AIHelperPtr= userSessions[sessionId];
-            messages= AIHelperPtr->GetMessages();
-        }
-
+        // 完整历史以 MySQL 为真相源，按 session 分页返回（不再受内存滑动窗口限制）
+        long long total = 0;
+        sql::ResultSet* cntRes = server_->mysqlUtil_.executeQuery(
+            "SELECT COUNT(*) AS cnt FROM chat_message WHERE id = ? AND session_id = ?",
+            userId, sessionId);
+        if (cntRes->next()) total = cntRes->getInt64("cnt");
 
         json successResp;
         successResp["success"] = true;
+        successResp["total"] = total;
+        successResp["page"] = page;
+        successResp["pageSize"] = pageSize;
         successResp["history"] = json::array();
 
-        for (size_t i = 0; i < messages.size(); ++i) {
+        // LIMIT/OFFSET 内联为字面量：本项目 bindParams 全部按字符串绑定，MySQL 不接受字符串 LIMIT
+        std::string sql = "SELECT is_user, content FROM chat_message "
+            "WHERE id = ? AND session_id = ? ORDER BY ts ASC, id ASC LIMIT "
+            + std::to_string(pageSize) + " OFFSET " + std::to_string(offset);
+        sql::ResultSet* res = server_->mysqlUtil_.executeQuery(sql, userId, sessionId);
+        while (res->next()) {
             json msgJson;
-            msgJson["is_user"] = (i % 2 == 0);
-            msgJson["content"] = messages[i].first;
+            msgJson["is_user"] = (res->getInt("is_user") == 1);
+            msgJson["content"] = res->getString("content");
             successResp["history"].push_back(msgJson);
         }
 

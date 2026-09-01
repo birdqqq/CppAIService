@@ -327,15 +327,36 @@
             }
         }
 
+        // 后端 /chat/history 已改为按 session 从 MySQL 分页（完整历史）；
+        // 此函数按 total/pageSize 逐页拉全，保持原有“一次取全”的调用方式
+        async function fetchFullHistory(sessionId, pageSize = 100) {
+            let history = [];
+            let page = 1;
+            for (;;) {
+                const res = await fetch('/chat/history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId, page, pageSize })
+                });
+                const data = await res.json();
+                if (!data.success || !Array.isArray(data.history)) {
+                    return page === 1 ? null : history; // 首页失败视为整体失败；中途失败返回已取到的
+                }
+                history = history.concat(data.history);
+                if (page * pageSize >= data.total) break; // 已取完全部
+                page++;
+            }
+            return history;
+        }
+
         async function switchSession(id) {
             currentSessionId = String(id); tempSession = false; clearMessages();
             if (!sessions[id].messages || sessions[id].messages.length === 0) {
                 try {
-                    const res = await fetch('/chat/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId }) });
-                    const data = await res.json();
-                    if (data.success && Array.isArray(data.history)) {
+                    const history = await fetchFullHistory(currentSessionId);
+                    if (history) {
                         sessions[id].messages = [];
-                        data.history.forEach(item => { sessions[id].messages.push({ role: item.is_user ? 'user' : 'assistant', content: item.content }); });
+                        history.forEach(item => { sessions[id].messages.push({ role: item.is_user ? 'user' : 'assistant', content: item.content }); });
                     }
                 } catch (err) { console.error('获取历史失败', err); }
             }
@@ -414,16 +435,11 @@
                 return;
             }
             try {
-                const res = await fetch('/chat/history', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: currentSessionId })
-                });
-                const data = await res.json();
-                if (data.success && Array.isArray(data.history)) {
+                const history = await fetchFullHistory(currentSessionId);
+                if (history) {
                     sessions[currentSessionId].messages = [];
                     clearMessages();
-                    data.history.forEach(item => {
+                    history.forEach(item => {
                         appendMessage(item.is_user ? 'user' : 'assistant', item.content);
                         sessions[currentSessionId].messages.push({ role: item.is_user ? 'user' : 'assistant', content: item.content });
                     });

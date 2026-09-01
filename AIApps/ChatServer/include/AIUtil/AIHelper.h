@@ -5,6 +5,7 @@
 #include <curl/curl.h>
 #include <iostream>
 #include <sstream>
+#include <chrono>
 
 #include "../../../../HttpServer/include/utils/JsonUtil.h"
 #include"../../../../HttpServer/include/utils/MysqlUtil.h"
@@ -39,6 +40,14 @@ public:
 
     std::vector<std::pair<std::string, long long>> GetMessages();
 
+    // 滑动窗口：内存里最多保留最近 MAX_CONTEXT_MESSAGES 条，完整历史在 MySQL
+    static constexpr size_t MAX_CONTEXT_MESSAGES = 20;
+    void trimContext();
+
+    // 活跃时间戳：用于闲置会话淘汰
+    void touch();
+    bool idleForSeconds(long long s) const;
+
 private:
     std::string escapeString(const std::string& input);
     //加入到mysql的接口（提供加入到线程池的接口，线程池做异步mysql更新操作）
@@ -66,6 +75,9 @@ private:
     //偶数下标代表用户的信息，奇数下标是ai返回的内容
     //后者代表时间戳
     std::vector<std::pair<std::string, long long>> messages;
+
+    // 最近一次活跃时间，用于闲置会话淘汰
+    std::chrono::steady_clock::time_point lastActiveTime_{std::chrono::steady_clock::now()};
 
     //http::MysqlUtil mysqlUtil_;
 };

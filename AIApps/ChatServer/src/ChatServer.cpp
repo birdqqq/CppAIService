@@ -18,6 +18,8 @@
 #include "../../../HttpServer/include/http/HttpRequest.h"
 #include "../../../HttpServer/include/http/HttpResponse.h"
 #include "../../../HttpServer/include/http/HttpServer.h"
+#include <thread>
+#include <chrono>
 
 
 
@@ -52,8 +54,8 @@ void ChatServer::initChatMessage() {
 
 void ChatServer::readDataFromMySQL() {
 
-
-    std::string sql = "SELECT id, username,session_id, is_user, content, ts FROM chat_message ORDER BY ts ASC, id ASC";
+    // 只加载每个用户的会话 id 列表到内存；消息本体按需懒加载（见 loadSessionMessagesFromMysql）
+    std::string sql = "SELECT DISTINCT id, session_id FROM chat_message ORDER BY id ASC, session_id ASC";
 
     sql::ResultSet* res;
     try {
@@ -66,37 +68,18 @@ void ChatServer::readDataFromMySQL() {
 
     while (res->next()) {
         long long user_id = 0;
-        std::string session_id ;  
-        std::string username, content;
-        long long ts = 0;
-        int is_user = 1;
+        std::string session_id;
 
         try {
-            user_id    = res->getInt64("id");       
-            session_id = res->getString("session_id");  
-            username   = res->getString("username");
-            content    = res->getString("content");
-            ts         = res->getInt64("ts");
-            is_user    = res->getInt("is_user");
+            user_id    = res->getInt64("id");
+            session_id = res->getString("session_id");
         }
         catch (const std::exception& e) {
             std::cerr << "Failed to read row: " << e.what() << std::endl;
-            continue; 
+            continue;
         }
 
-        auto& userSessions = chatInformation[user_id];
-
-        std::shared_ptr<AIHelper> helper;
-        auto itSession = userSessions.find(session_id);
-        if (itSession == userSessions.end()) {
-            helper = std::make_shared<AIHelper>();
-            userSessions[session_id] = helper;
-			sessionsIdsMap[user_id].push_back(session_id);
-        } else {
-            helper = itSession->second;
-        }
-
-        helper->restoreMessage(content, ts);
+        sessionsIdsMap[user_id].push_back(session_id);
     }
 
     std::cout << "readDataFromMySQL finished" << std::endl;
@@ -110,7 +93,92 @@ void ChatServer::setThreadNum(int numThreads) {
 
 
 void ChatServer::start() {
+    // 后台线程定期淘汰闲置的 AIHelper，避免上下文对象随会话数无限常驻内存
+    std::thread([this] {
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::minutes(10));
+            cleanIdleChatSessions(3600); // 1 小时未活跃即淘汰，跟随登录态
+        }
+    }).detach();
+
     httpServer_.start();
+}
+
+// 获取或创建用户的会话上下文；内存里没有则从 MySQL 懒加载最近消息
+std::shared_ptr<AIHelper> ChatServer::getOrCreateAIHelper(int userId, const std::string& sessionId)
+{
+    std::lock_guard<std::mutex> lock(mutexForChatInformation);
+
+    auto& userSessions = chatInformation[userId];
+    auto it = userSessions.find(sessionId);
+    if (it != userSessions.end())
+    {
+        return it->second;
+    }
+
+    auto helper = std::make_shared<AIHelper>();
+    loadSessionMessagesFromMysql(userId, sessionId, helper, AIHelper::MAX_CONTEXT_MESSAGES);
+    userSessions.emplace(sessionId, helper);
+    return helper;
+}
+
+// 按会话从 MySQL 加载最近 limit 条消息（从旧到新），只放内存当热缓存
+void ChatServer::loadSessionMessagesFromMysql(int userId, const std::string& sessionId,
+    std::shared_ptr<AIHelper> helper, int limit)
+{
+    if (!helper || limit <= 0) return;
+
+    try
+    {
+        // LIMIT 内联为字面量：bindParams 全部按字符串绑定，MySQL 不接受字符串 LIMIT
+        std::string sql = "SELECT content, ts FROM ("
+                          " SELECT content, ts FROM chat_message"
+                          " WHERE id = ? AND session_id = ? ORDER BY ts DESC LIMIT "
+                          + std::to_string(limit)
+                          + ") t ORDER BY ts ASC";
+        sql::ResultSet* res = mysqlUtil_.executeQuery(sql, userId, sessionId);
+        while (res->next())
+        {
+            std::string content = res->getString("content");
+            long long ts = res->getInt64("ts");
+            helper->restoreMessage(content, ts);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "loadSessionMessagesFromMysql failed: " << e.what() << std::endl;
+    }
+}
+
+// 淘汰超过 idleSeconds 未活跃的 AIHelper（内存中的 shared_ptr 释放，MySQL 历史不受影响）
+void ChatServer::cleanIdleChatSessions(long long idleSeconds)
+{
+    std::lock_guard<std::mutex> lock(mutexForChatInformation);
+
+    for (auto itUser = chatInformation.begin(); itUser != chatInformation.end(); )
+    {
+        auto& userSessions = itUser->second;
+        for (auto itS = userSessions.begin(); itS != userSessions.end(); )
+        {
+            if (itS->second->idleForSeconds(idleSeconds))
+            {
+                itS = userSessions.erase(itS);
+            }
+            else
+            {
+                ++itS;
+            }
+        }
+
+        if (userSessions.empty())
+        {
+            itUser = chatInformation.erase(itUser);
+        }
+        else
+        {
+            ++itUser;
+        }
+    }
 }
 
 
