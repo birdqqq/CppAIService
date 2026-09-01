@@ -1,5 +1,6 @@
 #include"../include/AIUtil/AIStrategy.h"
 #include"../include/AIUtil/AIFactory.h"
+#include <cstdlib>
 
 std::string AliyunStrategy::getApiUrl() const {
     return "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
@@ -54,7 +55,12 @@ std::string DouBaoStrategy::getApiKey()const {
 
 
 std::string DouBaoStrategy::getModel() const {
-    return "doubao-seed-1-6-thinking-250715";
+    // 模型名改为环境变量可配置(DOUBAO_MODEL)，默认用当前可用版本。
+    // 原硬编码 doubao-seed-1-6-thinking-250715 已下线(Shutdown)。
+    // 在火山方舟控制台开通对应模型后即可使用；换模型只需设环境变量，无需改代码重编译。
+    const char* model = std::getenv("DOUBAO_MODEL");
+    if (model && *model) return model;
+    return "doubao-seed-2-1-pro-260628";
 }
 
 

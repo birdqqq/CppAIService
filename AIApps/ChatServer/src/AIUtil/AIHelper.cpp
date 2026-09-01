@@ -67,6 +67,13 @@ std::string AIHelper::chat(int userId,std::string userName, std::string sessionI
         //执行请求
         json response = executeCurl(payload);
         std::string answer = strategy->parseResponse(response);
+        if (answer.empty() && response.contains("error")) {
+            // 透出 API 真实错误(如模型未开通、配额不足、鉴权失败等)，便于定位问题
+            const json& err = response["error"];
+            std::string errMsg = err.is_string() ? err.get<std::string>()
+                                : err.value("message", "未知错误");
+            answer = "[API错误] " + errMsg;
+        }
         addMessage(userId, userName, false, answer, sessionId);
         return answer.empty() ? "[Error] 无法解析响应" : answer;
     }
