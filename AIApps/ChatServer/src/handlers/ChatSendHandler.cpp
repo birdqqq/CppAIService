@@ -26,17 +26,17 @@ void ChatSendHandler::handle(const http::HttpRequest& req, http::HttpResponse* r
         int userId = std::stoi(session->getValue("userId"));
         std::string username = session->getValue("username");
 
-        std::string userQuestion;
-        std::string modelType;
-        std::string sessionId;
+        std::string userQuestion; // 存用户的提问
+        std::string modelType;    // 存用户选择的模型类型
+        std::string sessionId;    // 存用户选择的会话id
 
         auto body = req.getBody();
         if (!body.empty()) {
-            auto j = json::parse(body);
-            if (j.contains("question")) userQuestion = j["question"];
-            if (j.contains("sessionId")) sessionId = j["sessionId"];
+            auto j = json::parse(body); // 解析请求体为JSON对象
+            if (j.contains("question")) userQuestion = j["question"];  // 获取用户提问
+            if (j.contains("sessionId")) sessionId = j["sessionId"];   // 获取用户选择的会话id
 
-            modelType = j.contains("modelType") ? j["modelType"].get<std::string>() : "1";
+            modelType = j.contains("modelType") ? j["modelType"].get<std::string>() : "1";  // 获取用户选择的模型类型，默认值为"1"
         }
 
 
@@ -44,11 +44,13 @@ void ChatSendHandler::handle(const http::HttpRequest& req, http::HttpResponse* r
         std::shared_ptr<AIHelper> AIHelperPtr = server_->getOrCreateAIHelper(userId, sessionId);
 
 
+        // 调用AIHelper的chat方法，获取AI的响应内容
         std::string aiInformation=AIHelperPtr->chat(userId, username,sessionId, userQuestion, modelType);
+        // 将AI的响应内容封装成JSON格式，返回给前端
         json successResp;
         successResp["success"] = true;
         successResp["Information"] = aiInformation;
-        std::string successBody = successResp.dump(4);
+        std::string successBody = successResp.dump(4); // 缩进空格数，每层嵌套缩进4个空格
 
         resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
         resp->setCloseConnection(false);
