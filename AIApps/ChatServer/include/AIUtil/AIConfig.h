@@ -6,9 +6,10 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include "../../../../HttpServer/include/utils/JsonUtil.h"  
+#include "../../../../HttpServer/include/utils/JsonUtil.h"  // 假设封装了 nlohmann::json
 
 
+// 结构体：单个工具信息
 struct AITool {
     std::string name;
     std::unordered_map<std::string, std::string> params;
@@ -16,6 +17,7 @@ struct AITool {
 };
 
 
+// 结构体：AI 响应中工具调用结果
 struct AIToolCall {
     std::string toolName;
     json args;
@@ -23,6 +25,7 @@ struct AIToolCall {
 };
 
 
+// 配置管理类
 class AIConfig {
 public:
     bool loadFromFile(const std::string& path);

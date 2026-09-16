@@ -41,7 +41,7 @@ void ChatSendHandler::handle(const http::HttpRequest& req, http::HttpResponse* r
 
 
         // 获取或创建会话上下文（不存在则懒加载最近消息，内存只保留滑动窗口）
-        std::shared_ptr<AIHelper> AIHelperPtr = server_->getOrCreateAIHelper(userId, sessionId);
+        std::shared_ptr<AIHelper> AIHelperPtr = server_->getOrCreateAIHelper(userId, sessionId); // 存放用户对应的AIHelper对象
 
 
         // 调用AIHelper的chat方法，获取AI的响应内容

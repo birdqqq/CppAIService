@@ -30,14 +30,20 @@ class HttpResponse;
 namespace http
 {
 
+// noncopyable 这个类的作用只有一个：禁止对象拷贝   见文档
 class HttpServer : muduo::noncopyable
+// 是一个框架类
 {
 public:
+    // 设置回调
     using HttpCallback = std::function<void (const http::HttpRequest&, http::HttpResponse*)>;
     
     // 构造函数
+    //端口
     HttpServer(int port,
+               // 服务器名字 日志用
                const std::string& name,
+               //是否加密 http -> https
                bool useSSL = false,
                muduo::net::TcpServer::Option option = muduo::net::TcpServer::kNoReusePort);
     
@@ -59,22 +65,31 @@ public:
     }
 
     // 注册静态路由处理器
+    // GET 的两个重载版本
+    // -----------------
+    // 回调函数 HttpCallback 处理简单逻辑
     void Get(const std::string& path, const HttpCallback& cb)
     {
         router_.registerCallback(HttpRequest::kGet, path, cb);
     }
     
     // 注册静态路由处理器
+    // Handler 处理复杂逻辑 AiChat中几乎全是Handler
     void Get(const std::string& path, router::Router::HandlerPtr handler)
     {
         router_.registerHandler(HttpRequest::kGet, path, handler);
     }
+    // -----------------
 
+    //POST 的两个重载版本
+    // -----------------
+    // 回调函数 HttpCallback 处理简单逻辑
     void Post(const std::string& path, const HttpCallback& cb)
     {
         router_.registerCallback(HttpRequest::kPost, path, cb);
     }
 
+    // Handler 处理复杂逻辑 AiChat中几乎全是Handler
     void Post(const std::string& path, router::Router::HandlerPtr handler)
     {
         router_.registerHandler(HttpRequest::kPost, path, handler);
@@ -87,6 +102,7 @@ public:
     }
 
     // 注册动态路由处理函数
+    // 见文档
     void addRoute(HttpRequest::Method method, const std::string& path, const router::Router::HandlerCallback& callback)
     {
         router_.addRegexCallback(method, path, callback);
@@ -120,6 +136,8 @@ public:
 private:
     void initialize();
 
+    // 处理请求的四个核心函数
+    // ---------------------
     void onConnection(const muduo::net::TcpConnectionPtr& conn);
     void onMessage(const muduo::net::TcpConnectionPtr& conn,
                    muduo::net::Buffer* buf,
@@ -127,6 +145,7 @@ private:
     void onRequest(const muduo::net::TcpConnectionPtr&, const HttpRequest&);
 
     void handleRequest(const HttpRequest& req, HttpResponse* resp);
+    // ----------------------见文档
     
 private:
     muduo::net::InetAddress                      listenAddr_; // 监听地址

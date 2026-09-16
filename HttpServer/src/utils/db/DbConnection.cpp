@@ -11,6 +11,7 @@ DbConnection::DbConnection(const std::string& host,
                          const std::string& user,
                          const std::string& password,
                          const std::string& database)
+    // 建立一条真正的MySQL数据库连接，完成初始化配置
     : host_(host)
     , user_(user)
     , password_(password)
@@ -18,22 +19,24 @@ DbConnection::DbConnection(const std::string& host,
 {
     try 
     {
+        // 获取MySQL驱动的单例对象 
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        conn_.reset(driver->connect(host_, user_, password_));
+        // 连接数据库服务器，使用用户名密码验证 并交给shared_ptr管理
+        conn_.reset(driver->connect(host_, user_, password_));  // 见文档
         if (conn_) 
         {
-            conn_->setSchema(database_);
+            conn_->setSchema(database_); // 明确接下来操作的数据库 是database_
             
             // 设置连接属性
-            conn_->setClientOption("OPT_RECONNECT", "true");
-            conn_->setClientOption("OPT_CONNECT_TIMEOUT", "10");
-            conn_->setClientOption("multi_statements", "false");
+            conn_->setClientOption("OPT_RECONNECT", "true"); // 断线自动重连开关
+            conn_->setClientOption("OPT_CONNECT_TIMEOUT", "10"); // 连接建立超时时间 10s
+            conn_->setClientOption("multi_statements", "false"); // 禁止在依次执行中传入多条SQL语句
             
             // 设置字符集
             std::unique_ptr<sql::Statement> stmt(conn_->createStatement());
-            stmt->execute("SET NAMES utf8mb4");
+            stmt->execute("SET NAMES utf8mb4"); // 见文档
             
-            LOG_INFO << "Database connection established";
+            LOG_INFO << "Database connection established"; // 打印连接建立成功的日志
         }
     } 
     catch (const sql::SQLException& e) 

@@ -5,7 +5,7 @@
 #include"../AIUtil/AISessionIdGenerator.h"
 #include "../ChatServer.h"
 
-
+//发送消息时会返回sessionId以及响应
 
 class ChatCreateAndSendHandler : public http::router::RouterHandler
 {

@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+// 用于发送HTTP请求 例如：服务器 HTTP POST  请求 阿里云大模型API 通过curl库发送请求
 #include <curl/curl.h>
 #include <iostream>
 #include <sstream>
@@ -10,8 +11,11 @@
 #include "../../../../HttpServer/include/utils/JsonUtil.h"
 #include"../../../../HttpServer/include/utils/MysqlUtil.h"
 
+// 使用工厂模式 用于创建不同的AI策略
 #include"AIFactory.h"
+// 用于加载配置文件 保存API_Key、URL、MODEL_NAME等信息
 #include"AIConfig.h"
+// 支持工具调用的注册表，允许AI调用外部工具
 #include"AIToolRegistry.h"
 
 
@@ -38,6 +42,7 @@ public:
     // 可选：发送自定义请求体
     json request(const json& payload);
 
+    // 获取消息记录
     std::vector<std::pair<std::string, long long>> GetMessages();
 
     // 滑动窗口：内存里最多保留最近 MAX_CONTEXT_MESSAGES 条，完整历史在 MySQL
@@ -49,6 +54,7 @@ public:
     bool idleForSeconds(long long s) const;
 
 private:
+    // 对字符串进行转义，防止SQL注入和语法错误
     std::string escapeString(const std::string& input);
     //加入到mysql的接口（提供加入到线程池的接口，线程池做异步mysql更新操作）
     //todo: 
@@ -69,11 +75,15 @@ private:
     //对应地址
     std::string apiUrl_ = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     */
+    // 表示当前模型
+    //  策略模式，使用AIStrategy接口来定义不同的AI模型策略，支持多模型切换
+    // 这里使用智能指针的原因： 父类指针可以指向任意子类  ------ 面向接口编程！
     std::shared_ptr<AIStrategy> strategy;
 
     //一个用户针对一个AIHelper，messages存放用户的历史对话
     //偶数下标代表用户的信息，奇数下标是ai返回的内容
     //后者代表时间戳
+    // 聊天记录，存放用户和AI的对话内容及时间戳
     std::vector<std::pair<std::string, long long>> messages;
 
     // 最近一次活跃时间，用于闲置会话淘汰

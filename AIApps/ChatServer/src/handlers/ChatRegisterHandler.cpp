@@ -3,7 +3,7 @@
 
 void ChatRegisterHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
 {
-    
+    // 解析body(json格式)
     json parsed = json::parse(req.getBody());
     std::string username = parsed["username"];
     std::string password = parsed["password"];

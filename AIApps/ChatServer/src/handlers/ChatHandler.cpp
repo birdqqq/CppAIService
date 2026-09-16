@@ -9,8 +9,9 @@ void ChatHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
 
         auto session = server_->getSessionManager()->getSession(req, resp);
         LOG_INFO << "session->getValue(\"isLoggedIn\") = " << session->getValue("isLoggedIn");
-        if (session->getValue("isLoggedIn") != "true")
+        if (session->getValue("isLoggedIn") != "true") // 登陆失败
         {
+            // 打印错误信息
 
             json errorResp;
             errorResp["status"] = "error";
@@ -24,10 +25,11 @@ void ChatHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
         }
 
 
+        // 登陆成功
         int userId = std::stoi(session->getValue("userId"));
         std::string username = session->getValue("username");
 
-        std::string reqFile("../AIApps/ChatServer/resource/AI.html");
+        std::string reqFile("../AIApps/ChatServer/resource/AI.html"); // 获取登录页面
         FileUtil fileOperater(reqFile);
         if (!fileOperater.isValid())
         {
@@ -35,16 +37,17 @@ void ChatHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
             fileOperater.resetDefaultFile();
         }
 
-        std::vector<char> buffer(fileOperater.size());
-        fileOperater.readFile(buffer); 
+        std::vector<char> buffer(fileOperater.size()); // 按照文件大小创建buffer
+        fileOperater.readFile(buffer);  // 将文件写进buffer中 准备返给浏览器
         std::string htmlContent(buffer.data(), buffer.size());
 
 
-        size_t headEnd = htmlContent.find("</head>");
-        if (headEnd != std::string::npos)
+        // 动态修改 HTML
+        size_t headEnd = htmlContent.find("</head>"); // 找到 head的位置
+        if (headEnd != std::string::npos) // 找到了  std::string::npos 表示未找到
         {
             std::string script = "<script>const userId = '" + std::to_string(userId) + "';</script>";
-            htmlContent.insert(headEnd, script);
+            htmlContent.insert(headEnd, script); // 将用户id插入到head中 浏览器打开JS就能获取到用户id
         }
 
         // server_->packageResp(req.getVersion(), HttpResponse::k200Ok, "OK"

@@ -29,48 +29,55 @@ using namespace http;
 ChatServer::ChatServer(int port,
     const std::string& name,
     muduo::net::TcpServer::Option option)
-    : httpServer_(port, name, option)
+    : httpServer_(port, name, option) // httpServer_ 是实例化的对象 需直接构造
 {
     initialize();
 }
+//构造函数只负责 创建对象 而函数initialize负责初始化 职责分离
 
 void ChatServer::initialize() {
     std::cout << "ChatServer initialize start  ! " << std::endl;
-	http::MysqlUtil::init("tcp://127.0.0.1:3306", "root", "123456", "ChatHttpServer", 5);
+	http::MysqlUtil::init("tcp://127.0.0.1:3306", "root", "123456", "ChatHttpServer", 5); //先初始化数据库，因为登录注册聊天均需要数据库，所以第一个初始化
 
-    initializeSession();
+    initializeSession(); // 第二个初始化会话 因为后面的handler可能会访问session
 
-    initializeMiddleware();
+    initializeMiddleware(); // 第三个初始化 因为，所有请求进入handler之前都会，经过中间件
 
-    initializeRouter();
+    initializeRouter(); // 最后初始化router router需要创建ChatEntryHandler(this) 需要访问session 数据库等 所以最后初始化
 }
 
 void ChatServer::initChatMessage() {
 
     std::cout << "initChatMessage start ! " << std::endl;
-    readDataFromMySQL();
+    readDataFromMySQL();  // 服务器启动后先恢复上下文  假设服务器重启前有上下文信息，重启后没有恢复则全部丢失！不符合使用常识
     std::cout << "initChatMessage success ! " << std::endl;
 }
 
 void ChatServer::readDataFromMySQL() {
+// 一句话总结：
+// 从MySQL的chat_message表中把每个用户的聊天记录读出来，只把「用户id -> 会话id列表」重建到内存sessionsIdsMap中，
+// 让服务器随时知道每个用户有哪些会话；消息内容不在这里加载，等用户真正打开某个会话时再按需懒加载
 
+    // 这句查询语句 见笔记
     // 只加载每个用户的会话 id 列表到内存；消息本体按需懒加载（见 loadSessionMessagesFromMysql）
     std::string sql = "SELECT DISTINCT id, session_id FROM chat_message ORDER BY id ASC, session_id ASC";
 
-    sql::ResultSet* res;
+    sql::ResultSet* res; // 实例化MySQL连接库，用于接收查询结果 一张查询结果表 类似Excel，一行一条记录，可一行行查询
     try {
-        res = mysqlUtil_.executeQuery(sql);
+        res = mysqlUtil_.executeQuery(sql); // 将查询语句交给数据库执行，结果用res接收
     }
     catch (const std::exception& e) {
         std::cerr << "MySQL query failed: " << e.what() << std::endl;
         return;
     }
 
+    // 一行行遍历查询结果
     while (res->next()) {
         long long user_id = 0;
         std::string session_id;
 
         try {
+            // 使用对应方法获取对应字段
             user_id    = res->getInt64("id");
             session_id = res->getString("session_id");
         }
@@ -79,7 +86,7 @@ void ChatServer::readDataFromMySQL() {
             continue;
         }
 
-        sessionsIdsMap[user_id].push_back(session_id);
+        sessionsIdsMap[user_id].push_back(session_id); // 将此次会话加到这个用户id下
     }
 
     std::cout << "readDataFromMySQL finished" << std::endl;
@@ -87,11 +94,14 @@ void ChatServer::readDataFromMySQL() {
 
 
 
+// ------------------
+// 包装（wrapper）函数，将参数numThreads转发至httpserver的setThreadNum()函数
 void ChatServer::setThreadNum(int numThreads) {
     httpServer_.setThreadNum(numThreads);
 }
 
 
+// 包装（wrapper）函数,同理，只负责转发（另外还会拉起后台的闲置会话清理线程）
 void ChatServer::start() {
     // 后台线程定期淘汰闲置的 AIHelper，避免上下文对象随会话数无限常驻内存
     std::thread([this] {
@@ -103,22 +113,26 @@ void ChatServer::start() {
 
     httpServer_.start();
 }
+// 这样做的目的：main()不直接依赖HttpServer 需要ChatServer进行转发 main()不用关心内部是不是httpserver，这就是封装带来的好处 ！
+// -----------------
 
 // 获取或创建用户的会话上下文；内存里没有则从 MySQL 懒加载最近消息
 std::shared_ptr<AIHelper> ChatServer::getOrCreateAIHelper(int userId, const std::string& sessionId)
 {
     std::lock_guard<std::mutex> lock(mutexForChatInformation);
 
-    auto& userSessions = chatInformation[userId];
-    auto it = userSessions.find(sessionId);
+    // chatInformation是两层字典结构 用户id->{session_id->AIHelper}
+    auto& userSessions = chatInformation[userId]; //  userSessions保存的是该用户的所有会话
+    auto it = userSessions.find(sessionId); //找出指定session_id的内容
     if (it != userSessions.end())
     {
-        return it->second;
+        return it->second; // 找到了 helper就直接接收原有的AIHelper
     }
 
-    auto helper = std::make_shared<AIHelper>();
+    // 没找到就是用这个新的helper
+    auto helper = std::make_shared<AIHelper>(); // 指向一个新的AIHelper对象
     loadSessionMessagesFromMysql(userId, sessionId, helper, AIHelper::MAX_CONTEXT_MESSAGES);
-    userSessions.emplace(sessionId, helper);
+    userSessions.emplace(sessionId, helper); // 加到字典里
     return helper;
 }
 
@@ -141,7 +155,7 @@ void ChatServer::loadSessionMessagesFromMysql(int userId, const std::string& ses
         {
             std::string content = res->getString("content");
             long long ts = res->getInt64("ts");
-            helper->restoreMessage(content, ts);
+            helper->restoreMessage(content, ts); // 使用restoreMessage传入这条消息的内容和时间
         }
     }
     catch (const std::exception& e)
@@ -183,6 +197,11 @@ void ChatServer::cleanIdleChatSessions(long long idleSeconds)
 
 
 void ChatServer::initializeRouter() {
+// 一句话总结：
+// 是整个项目的路由注册中心 将URL和对应的处理器绑定
+// 如果后续想添加新的接口，1.新建ChatXXHandler 2.在initializeRouter中注册 ！
+// 举例:
+//  httpServer_.Post("/chat/XX",std::make_shared<ChatXXHandler>(this));
 
     httpServer_.Get("/", std::make_shared<ChatEntryHandler>(this));
     httpServer_.Get("/entry", std::make_shared<ChatEntryHandler>(this));
@@ -213,15 +232,20 @@ void ChatServer::initializeRouter() {
 }
 
 void ChatServer::initializeSession() {
+    //初始化会话
+    //分层设计  因为会话属于Http层，所以这里将SessionManager交给HttpServer管理
 
     auto sessionStorage = std::make_unique<http::session::MemorySessionStorage>();
 
-    auto sessionManager = std::make_unique<http::session::SessionManager>(std::move(sessionStorage));
+    auto sessionManager = std::make_unique<http::session::SessionManager>(std::move(sessionStorage));//移动语义，转移所有权
 
     setSessionManager(std::move(sessionManager));
 }
 
 void ChatServer::initializeMiddleware() {
+    //初始化中间件
+    //本函数 给服务器增加CORS中间件
+    //后续想增加日志中间件等其他中间件 统一在这里注册！
 
     auto corsMiddleware = std::make_shared<http::middleware::CorsMiddleware>();
 
@@ -229,14 +253,18 @@ void ChatServer::initializeMiddleware() {
 }
 
 
-void ChatServer::packageResp(const std::string& version,
-    http::HttpResponse::HttpStatusCode statusCode,
-    const std::string& statusMsg,
-    bool close,
-    const std::string& contentType,
-    int contentLen,
-    const std::string& body,
-    http::HttpResponse* resp)
+void ChatServer::packageResp(const std::string& version, // 版本号 (1.1?)
+    http::HttpResponse::HttpStatusCode statusCode,       // 状态码 (200 ?)
+    const std::string& statusMsg,                        // 状态信息 (OK ?)
+    bool close,                                          // 是否关闭连接
+    const std::string& contentType,                      // 内容类型 (application/json ?)
+    int contentLen,                                      // 内容长度
+    const std::string& body,                             // 响应体
+    http::HttpResponse* resp)                            // 封装的位置 HttpResponse* resp 指针 指向HttpResponse
+// 一句话总结：
+// 负责统一构造HTTP响应
+// 因为每个Handler处理完之后都需要将响应封装成HTTP，将这部分逻辑分离出来，当后面HTTP响应格式变化时，只改一处即可！
+// 一个重要的变成原则 DRY （Don't Repeat Yourself，别重复自己）
 {
     if (resp == nullptr)
     {
@@ -244,6 +272,7 @@ void ChatServer::packageResp(const std::string& version,
         return;
     }
 
+    // 将对应内容 填到对应位置
     try
     {
         resp->setVersion(version);
