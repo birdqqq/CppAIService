@@ -75,8 +75,9 @@ std::string DouBaoStrategy::getModel() const {
     // 模型名改为环境变量可配置(DOUBAO_MODEL)，默认用当前可用版本。
     // 原硬编码 doubao-seed-1-6-thinking-250715 已下线(Shutdown)。
     // 在火山方舟控制台开通对应模型后即可使用；换模型只需设环境变量，无需改代码重编译。
-    const char* model = std::getenv("DOUBAO_MODEL");
-    if (model && *model) return model;
+    // 同样 trim，避免环境变量里的尾随换行被拼进请求体（详见 EnvUtil.h）
+    std::string model = getEnvTrimmed("DOUBAO_MODEL");
+    if (!model.empty()) return model;
     return "doubao-seed-2-1-pro-260628";
 }
 
@@ -111,9 +112,8 @@ std::string DouBaoStrategy::parseResponse(const json& response) const {
 
 
 std::string AliyunRAGStrategy::getApiUrl() const {
-    const char* key = std::getenv("Knowledge_Base_ID");
-    if (!key) throw std::runtime_error("Knowledge_Base_ID not found!");
-    std::string id(key);
+    // 同样 trim：这个 id 会被直接拼进 URL，混入空白会导致请求地址错误（详见 EnvUtil.h）
+    std::string id = requireEnvTrimmed("Knowledge_Base_ID", "Knowledge_Base_ID not found!");
     //对应知识库id
     return "https://dashscope.aliyuncs.com/api/v1/apps/"+id+"/completion";
 }

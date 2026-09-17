@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "../../../../HttpServer/include/utils/JsonUtil.h"
+#include "../../../../HttpServer/include/utils/EnvUtil.h"
 
 
 
@@ -41,10 +42,11 @@ class AliyunStrategy : public AIStrategy {
 
 public:
     AliyunStrategy() {
-        const char* key = std::getenv("DASHSCOPE_API_KEY"); // API-KEY通过读取环境变量获得 而不是直接写死，因为API Key属于敏感信息，不能上传github
-                                                            // 通过设置环境变量（bash）程序读取环境变量 这是企业项目的标准做法
-        if (!key) throw std::runtime_error("Aliyun API Key not found!");
-        apiKey_ = key;
+        // API-KEY通过读取环境变量获得 而不是直接写死，因为API Key属于敏感信息，不能上传github
+        // 通过设置环境变量（bash）程序读取环境变量 这是企业项目的标准做法
+        // 用 requireEnvTrimmed 而不是裸 getenv：它会自动去掉 docker -e / 读文件等方式带进来的
+        // 尾随换行。换行会混进 Authorization 头导致请求头提前截断，服务端误判为没有请求体（详见 EnvUtil.h）
+        apiKey_ = requireEnvTrimmed("DASHSCOPE_API_KEY", "Aliyun API Key not found!");
         isMCPModel = false;
     }
 
@@ -64,9 +66,8 @@ class DouBaoStrategy : public AIStrategy {
 
 public:
     DouBaoStrategy() {
-        const char* key = std::getenv("DOUBAO_API_KEY");
-        if (!key) throw std::runtime_error("DOUBAO API Key not found!");
-        apiKey_ = key;
+        // 同样 trim：豆包 Key 也常从文件/环境变量传入，避免尾随换行污染 Authorization 头
+        apiKey_ = requireEnvTrimmed("DOUBAO_API_KEY", "DOUBAO API Key not found!");
         isMCPModel = false;
     }
     std::string getApiUrl() const override;
@@ -85,9 +86,8 @@ class AliyunRAGStrategy : public AIStrategy {
 
 public:
     AliyunRAGStrategy() {
-        const char* key = std::getenv("DASHSCOPE_API_KEY");
-        if (!key) throw std::runtime_error("Aliyun API Key not found!");
-        apiKey_ = key;
+        // 同 AliyunStrategy：trim 掉环境变量可能带进来的尾随换行（详见 EnvUtil.h）
+        apiKey_ = requireEnvTrimmed("DASHSCOPE_API_KEY", "Aliyun API Key not found!");
         isMCPModel = false;
     }
 
@@ -107,9 +107,8 @@ class AliyunMcpStrategy : public AIStrategy {
 
 public:
     AliyunMcpStrategy() {
-        const char* key = std::getenv("DASHSCOPE_API_KEY");
-        if (!key) throw std::runtime_error("Aliyun API Key not found!");
-        apiKey_ = key;
+        // 同 AliyunStrategy：trim 掉环境变量可能带进来的尾随换行（详见 EnvUtil.h）
+        apiKey_ = requireEnvTrimmed("DASHSCOPE_API_KEY", "Aliyun API Key not found!");
         isMCPModel = true;
     }
 

@@ -1,4 +1,5 @@
 #include "../include/handlers/ChatSpeechHandler.h"
+#include "../../../../HttpServer/include/utils/EnvUtil.h"
 
 
 void ChatSpeechHandler::handle(const http::HttpRequest& req, http::HttpResponse* resp)
@@ -35,14 +36,9 @@ void ChatSpeechHandler::handle(const http::HttpRequest& req, http::HttpResponse*
         }
 
 
-        const char* secretEnv = std::getenv("BAIDU_CLIENT_SECRET");
-        const char* idEnv = std::getenv("BAIDU_CLIENT_ID");
-
-        if (!secretEnv) throw std::runtime_error("BAIDU_CLIENT_SECRET not found!");
-        if (!idEnv) throw std::runtime_error("BAIDU_CLIENT_ID not found!");
-
-        std::string clientSecret(secretEnv);
-        std::string clientId(idEnv);
+        // 同样 trim 掉可能带进来的尾随空白，避免污染发给百度语音的请求参数（详见 EnvUtil.h）
+        std::string clientSecret = requireEnvTrimmed("BAIDU_CLIENT_SECRET", "BAIDU_CLIENT_SECRET not found!");
+        std::string clientId = requireEnvTrimmed("BAIDU_CLIENT_ID", "BAIDU_CLIENT_ID not found!");
 
         AISpeechProcessor speechProcessor(clientId, clientSecret);
         
